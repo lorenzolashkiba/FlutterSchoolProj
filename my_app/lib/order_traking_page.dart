@@ -15,7 +15,7 @@ class OrderTrackingPageState extends State<OrderTrackingPage> {
   Timer? timer;
   static const LatLng sourceLocation = LatLng(37.33500926, -122.03272188);
   static const LatLng destination = LatLng(37.33429383, -122.06600055);
-
+  BitmapDescriptor currentIcon = BitmapDescriptor.defaultMarker;
   Position? currentPosition;
   Future<bool> _handleLocationPermission() async {
     bool serviceEnabled;
@@ -23,6 +23,7 @@ class OrderTrackingPageState extends State<OrderTrackingPage> {
 
     serviceEnabled = await Geolocator.isLocationServiceEnabled();
     if (!serviceEnabled) {
+      // ignore: use_build_context_synchronously
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
           content: Text(
               'Location services are disabled. Please enable the services')));
@@ -32,12 +33,14 @@ class OrderTrackingPageState extends State<OrderTrackingPage> {
     if (permission == LocationPermission.denied) {
       permission = await Geolocator.requestPermission();
       if (permission == LocationPermission.denied) {
+        // ignore: use_build_context_synchronously
         ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('Location permissions are denied')));
         return false;
       }
     }
     if (permission == LocationPermission.deniedForever) {
+      // ignore: use_build_context_synchronously
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
           content: Text(
               'Location permissions are permanently denied, we cannot request permissions.')));
@@ -46,10 +49,15 @@ class OrderTrackingPageState extends State<OrderTrackingPage> {
     return true;
   }
 
+  @override
+  void dispose() {
+    timer?.cancel();
+    super.dispose();
+  }
+
   void _startTimer() {
     // Create a Timer object that calls the specified function every 5 seconds
-    timer = Timer.periodic(Duration(seconds: 5), (timer) {
-      print("called");
+    timer = Timer.periodic(const Duration(seconds: 1), (timer) {
       // Call your function here
       getCurrentLocation();
     });
@@ -58,44 +66,58 @@ class OrderTrackingPageState extends State<OrderTrackingPage> {
   void getCurrentLocation() async {
     final hasPermission = await _handleLocationPermission();
     if (!hasPermission) return;
-    await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.high)
+    await Geolocator.getCurrentPosition(
+            desiredAccuracy: LocationAccuracy.bestForNavigation)
         .then((Position position) {
       setState(() => currentPosition = position);
     }).catchError((e) {
-      debugPrint(e);
+      debugPrint("h");
     });
+    // ignore: avoid_print
     print(currentPosition);
+    GoogleMapController googleMapController = await _controller.future;
+    googleMapController.animateCamera(CameraUpdate.newCameraPosition(
+        CameraPosition(
+            zoom: 13.5,
+            target: LatLng(
+                currentPosition!.latitude, currentPosition!.longitude))));
+  }
+
+  void setCustomMarkerIcon() {
+    BitmapDescriptor.fromAssetImage(
+            ImageConfiguration.empty, "assets/Badge.png")
+        .then((icon) {
+      currentIcon = icon;
+    });
   }
 
   @override
   void initState() {
     super.initState();
+    setCustomMarkerIcon();
     getCurrentLocation();
     _startTimer();
   }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text(
-          "Driving",
-          style: TextStyle(color: Colors.black, fontSize: 16),
-        ),
-      ),
       body: currentPosition == null
           ? const Center(child: Text("loading"))
           : GoogleMap(
               initialCameraPosition: CameraPosition(
                   target: LatLng(
                       currentPosition!.latitude, currentPosition!.longitude),
-                  zoom: 14.5),
+                  zoom: 10),
               markers: {
                 Marker(
                   markerId: const MarkerId("currentLocation"),
+                  icon: currentIcon,
                   position: LatLng(
                       currentPosition!.latitude, currentPosition!.longitude),
                 ),
+              },
+              onMapCreated: (mapController) {
+                _controller.complete(mapController);
               },
             ),
     );
